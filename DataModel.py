@@ -105,8 +105,6 @@ class Slice(object):
         return self._size
 
     def __getitem__(self, _slice):
-        #print _slice.real
-
         start = _slice.start
         stop  = _slice.stop
 
@@ -118,13 +116,8 @@ class Slice(object):
         which_sector = sectors * bytes_per_sector
         self._fo.seek(which_sector)
 
-        #print '{} 0x{:x}'.format(which_sector, which_sector)
         result = bytearray(self._fo.read(stop - which_sector))
         result = result[start-which_sector:]
-        #print '{} {} {} {} {}'.format(start, stop, stop - which_sector, stop - start, len(result))
-
-        #self._fo.seek(start)
-        #result = bytearray(self._fo.read(stop - start))
         return result
 
 class FileDataModel(DataModel):
@@ -132,12 +125,14 @@ class FileDataModel(DataModel):
         self._filename = filename
         self._fo = open(filename, "rb")
 
-        #self._fo.seek(0, os.SEEK_END)
-        #print self._fo.tell()
-        #sys.exit()
-        self._size = 8000000000*1024*1024*1024#os.path.getsize(self._filename)
-        #print os.stat(self._filename)
-        #sys.exit()
+        not_normal_file = False
+        try:
+            self._size = os.path.getsize(self._filename)
+        except WindowsError:
+            not_normal_file = True
+            # ugly hack
+            self._size = 8000000000*1024*1024*1024
+
         self.data = Slice(self._fo, self._size)
 
         super(FileDataModel, self).__init__(self.data)
