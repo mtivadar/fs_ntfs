@@ -1,5 +1,4 @@
 # fs_ntfs
-NTFS filesystem format parser
 This will let you parse a NTFS file system.\
 Attributes supported so far: 
  * **$FILE_NAME**
