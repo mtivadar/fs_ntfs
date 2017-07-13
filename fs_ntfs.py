@@ -128,170 +128,6 @@ class Attribute_INDEX_ALLOCATION(Attribute_TYPES):
         return
 
 
-        """
-        for data_run in attribute.data_runs:
-            
-            # file data model
-            data = attribute.data
-
-            n, lcn = data_run
-
-            bytes_per_cluster = file_record.sectors_per_cluster * file_record.bytes_per_sector
-            file_offset = lcn * file_record.sectors_per_cluster * file_record.bytes_per_sector
-            size_in_bytes = n * file_record.sectors_per_cluster * file_record.bytes_per_sector
-
-            total_clusters_in_buffer = n
-
-            log.debug('INDX: 0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
-
-            clusters = data.getStream(file_offset, file_offset + size_in_bytes)
-
-            # buffered data model
-            data = DataModel.BufferDataModel(clusters, 'lcn')
-
-            # INDX structure at @file_offset
-            #ofs = file_offset
-
-            ofs = 0
-
-            indx_magic = data.getStream(ofs, ofs + 4)
-            Helper.logger().debug('Magic: {}'.format(indx_magic))
-
-            if indx_magic != 'INDX':
-                log.debug('Bad magic: {}, continue anyway with next data-run'.format(indx_magic))
-                continue
-
-            self.vcn_idx_record = data.getQWORD(ofs + 16)
-            log.debug('VCN of this Index record in the Index Allocation: 0x{:0x}'.format(self.vcn_idx_record))
-
-            self.ofs_first_index_entry = data.getDWORD(ofs + 0x18 + 0x00)
-            self.total_size_of_index_entries = data.getDWORD(ofs + 0x18 + 0x04)
-
-            log.debug('Offset to first index entry: 0x{:0X}'.format(self.ofs_first_index_entry))
-            log.debug('Total size of index entries: 0x{:0X}'.format(self.total_size_of_index_entries))
-
-            self.size_update_seq = data.getWORD(ofs + 6)
-            log.debug('Size in words of Update Sequence: 0x{:0X}'.format(self.size_update_seq))
-
-            self.update_seq = data.getWORD(ofs + 0x28)
-            log.debug('Update Sequence number: 0x{:04x}'.format(self.update_seq))
-
-            self.update_seq_array = data.getStream(ofs + 0x2a, ofs + 0x2a + self.size_update_seq * 2)
-
-            g = 'Update Sequence: '
-            for x in self.update_seq_array:
-                g += '{:02x} '.format(x)
-                
-            log.debug('{}'.format(g))
-
-            ## apply fixup
-            k = 0
-            i = 0
-
-            fixup_array = DataModel.BufferDataModel(self.update_seq_array, 'fixup')
-
-            while k < size_in_bytes:
-                if i >= self.size_update_seq:
-                    break
-
-                k += file_record.bytes_per_sector
-                seq = data.getWORD(k - 2)
-
-                if seq != self.update_seq:
-                    log.debug('update sequence check failed, image may be corrupt, continue anyway')
-
-                
-                fixup = fixup_array.getWORD(i * 2)
-
-                log.debug('last two bytes of sector: {:04x}, fixup {:04x}'.format(seq, fixup))
-
-                fixup_s = fixup_array.getStream(i * 2, i * 2 + 2)
-                data.getData()[k-2:k] = fixup_s
-                i += 1
-
-
-            self.non_leaf_node = data.getBYTE(ofs + 0x18 + 0x0c)
-            log.debug('Non-leaf node Flag (has sub-nodes): {}'.format(self.non_leaf_node))
-
-            log.debug('')
-            #sys.exit()
-            #off = ofs + 0x58 # FIXME! calculat #0x2a + size_update_seq*2 - 2
-
-            # ofs_first_index_entry is relative to 0x18 (documentation says this)
-            off = ofs + self.ofs_first_index_entry + 0x18
-
-            if attribute.std_header.name == '$I30':
-                # we support only this kind of index
-
-                log.debug('Iterating {} index...'.format(attribute.std_header.name))
-                while 1:
-
-                    entry = IndexEntry()
-
-                    # index entry sau index record header
-                    # FIXME! we do not handle subnodes
-
-                    file_reference = data.getQWORD(off + 0)
-                    log.debug('File reference: 0x{:0X}'.format(file_reference))
-                    entry.file_reference = FileReference(file_reference)
-
-                    entry.length_index_entry = data.getWORD(off + 8)
-                    log.debug('Size of the index entry: 0x{:0X}'.format(entry.length_index_entry))
-
-                    entry.offset_to_filename = data.getWORD(off + 0x0a)
-                    log.debug('Offset to filename: 0x{:0X}'.format(entry.offset_to_filename))
-
-                    # in documentation, this seems to be fixed offset
-                    # however, this field seems to be wrong, because it's not always equal to 0x52 ...???
-                    offset_to_filename = 0x52
-
-                    entry.index_flags = data.getWORD(off + 0x0c)
-                    log.debug('Index flags: 0x{:0X}'.format(entry.index_flags))
-
-                    if entry.index_flags & 2:
-                        _offset = off + total_clusters_in_buffer
-                        vcn = _offset / bytes_per_cluster + 1
-
-                        total_vcn = total_clusters_in_buffer
-                        log.debug('Current VCN: {}'.format(vcn))
-                        log.debug('Total VCNs: {}'.format(total_vcn))
-                        log.debug('ofofset {}'.format(off))
-
-                        if vcn < total_vcn:
-                            off += 0x60#entry.length_index_entry
-                            off = 0x10a8
-                            continue
-                        else:
-                            break
-
-                    entry.length_of_filename = data.getBYTE(off + 0x50)
-                    log.debug('Length of the filename: 0x{:0X}'.format(entry.length_of_filename))
-
-                    ie_filename = data.getStream(off + offset_to_filename, off + offset_to_filename + entry.length_of_filename*2)
-
-                    ie_filename = Helper._widechar_to_ascii(ie_filename)
-                    entry.filename = ie_filename
-                    log.debug('Filename: {}'.format(entry.filename))
-
-                    if entry.index_flags & 1:
-                        entry.vcn_subnodes = data.getQWORD(off + 2 * entry.length_of_filename + 0x52)
-                        log.debug('VCN of index buffer with sub-nodes: 0x{:0X}'.format(entry.vcn_subnodes))
-
-                    off += entry.length_index_entry
-
-                    log.debug('')
-
-                    if entry.index_flags & 2:
-                        break
-
-                    self.entries.append(entry)
-            else:
-                log.debug("Index {} not supported.".format(attribute.std_header.name))
-        log.debug('--=== end of index iteration ===--')
-        log.debug('')
-
-        """
-
 class Attribute_INDEX_ROOT(Attribute_TYPES):
     @classmethod
     def registered_for(cls, attr_type):
@@ -654,6 +490,84 @@ class Attribute_STANDARD_INFORMATION(Attribute_TYPES):
         log = Helper.logger()
         log.debug('')
 
+class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
+    @classmethod
+    def registered_for(cls, attr_type):
+        return attr_type == 0x20
+
+    def __init__(self, attribute, file_record):
+        # $ATTRIBUTE_LIST
+
+        log = Helper.logger()
+
+        log.debug('')
+
+        if attribute.std_header.non_resident_flag:
+            log.warning('!!! Only resident type of $ATTRIBUTE_LIST is supported, will exit. !!!')
+            log.debug('')
+            return
+
+        data = attribute.data
+        self.file_record = file_record
+
+        ao   = attribute.ao + attribute.std_header.offset_to_attribute
+
+        attribute_list_length = attribute.std_header.length
+
+        unq_file_records = set()
+
+        while attribute_list_length > 0:
+            self.type = data.getDWORD(ao + 0x00)
+            log.debug('\t\tType: {} (0x{:0X})'.format(self.file_record.mft.AttrDef.getByType(self.type).name, self.type))
+
+            if self.type == 0x0:
+                break
+
+            self.record_length = data.getWORD(ao + 0x04)
+            log.debug('\t\tRecord length: 0x{:0X}'.format(self.record_length))
+
+            self.name_length = data.getBYTE(ao + 0x06)
+            log.debug('\t\tName length: 0x{:0X}'.format(self.name_length))
+
+            self.offset_to_name = data.getBYTE(ao + 0x07)
+            log.debug('\t\tOffset to name: 0x{:0X}'.format(self.offset_to_name))
+
+            self.starting_vcn = data.getQWORD(ao + 0x08)
+            log.debug('\t\tStarting VCN: 0x{:0X}'.format(self.starting_vcn))
+
+            self.base_file_reference = data.getQWORD(ao + 0x10)
+
+            file_reference = FileReference(self.base_file_reference)
+            log.debug('\t\tBase file reference: 0x{:0X}'.format(file_reference.record_number))
+
+            if self.name_length != 0:
+                self.name = data.getStream(ao + self.offset_to_name, ao + self.offset_to_name + self.name_length*2)
+
+                name = Helper._widechar_to_ascii(self.name)
+                log.debug('\t\tName: {}'.format(name))
+
+            log.debug('')
+
+            ao += self.record_length
+            attribute_list_length -= self.record_length
+
+            if file_reference.record_number != self.file_record.inode:
+                unq_file_records.add(file_reference.record_number)
+
+        for inode in unq_file_records:
+
+            log.debug('+++++ <file record from attribute list> +++++')
+            fr = self.file_record.mft.get_file_record(inode)
+            log.debug('+++++ </file record from attribute list> +++++')
+
+            self.file_record.attributes.extend(fr.attributes)
+
+            for k in fr.attributes_dict:
+                # what about duplicates ?
+                self.file_record.attributes_dict[k] = fr.attributes_dict[k]
+
+        log.debug('')
+
 class Attribute_FILE_NAME(Attribute_TYPES):
     @classmethod
     def registered_for(cls, attr_type):
@@ -706,9 +620,10 @@ class Attribute(object):
         self.std_header = AttributeStandardHeader()
 
 class FileRecord(object):
-    def __init__(self):
+    def __init__(self, mft):
         self.attributes = []
         self.attributes_dict = {}
+        self.mft = mft
 
 class MFT(object):
     def __init__(self, dataModel):
@@ -966,7 +881,7 @@ class MFT(object):
             #raise NtfsError('magic should mach "FILE", offset 0x{:x}'.format(fr))
 
 
-        obj = FileRecord()
+        obj = FileRecord(self)
 
         offset_update_seq = data.getWORD(fr + 0x04)
         log.debug('Offset to update sequence: 0x{:0x}'.format(offset_update_seq))
@@ -1009,6 +924,7 @@ class MFT(object):
 
         log.debug('')
 
+        obj.inode = which_file_record
         obj.off_first_attr = off_first_attr
         obj.flags = flags
         obj.real_size = real_size
