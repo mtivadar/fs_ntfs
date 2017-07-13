@@ -6,6 +6,7 @@ Attributes supported so far:
  * **$INDEX_ROOT**
  * **$INDEX_ALLOCATION**
  * **$DATA**
+ * **$ATTRIBUTE_LIST**
 
 Supported functions: 
 * parse $MFT
