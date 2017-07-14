@@ -41,7 +41,7 @@ class Helper(object):
             log.debug('\tlast two bytes of sector: {:04x}, fixup {:04x}'.format(seq, fixup))
 
             if seq != update_seq:
-                log.debug('\tupdate sequence check failed, image may be corrupt, continue anyway')
+                log.warning('\tupdate sequence check failed, image may be corrupt, continue anyway')
 
 
             fixup_s = fixup_array.getStream(i * 2, i * 2 + 2)
@@ -132,6 +132,104 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
     @classmethod
     def registered_for(cls, attr_type):
         return attr_type == 0x90
+
+    def _iterate_index_entries_R(self, data, off):
+        log = Helper.logger()
+
+        nodes = []
+        entries = []
+        while 1:
+            log.debug('')
+            log.debug('-= index entry =-')
+
+            entry = IndexEntry()
+
+            # index entry
+            offset_data = data.getWORD(off + 0)
+            log.debug('offset to data: 0x{:x}'.format(offset_data))
+
+            size_data = data.getWORD(off + 0x2)
+            log.debug('size of data: 0x{:x}'.format(size_data))
+
+            size_entry = data.getWORD(off + 0x8)
+            log.debug('size of entry: 0x{:x}'.format(size_entry))
+
+            size_key = data.getWORD(off + 0xA)
+            log.debug('size of key: 0x{:x}'.format(size_key))
+
+            r_flags = data.getWORD(off + 0x0C)
+            log.debug('flags: 0x{:x}'.format(r_flags))
+
+            tag = data.getDWORD(off + 0x10)
+            log.debug('key reparse tag: 0x{:x}'.format(tag))
+
+            key_mft = data.getQWORD(off + 0x14)
+            key_mft_fr = FileReference(key_mft).record_number
+            log.debug('key mft reference of reparse point: 0x{:x}, 0x{:x}'.format(key_mft, key_mft_fr))
+            
+
+            self.file_record.mft.get_file_record(key_mft_fr)
+
+            if r_flags & 1:
+                kdata = data.getDWORD(off + 0x20)
+                log.debug('vcn 0x{:x}'.format(kdata))
+
+                entry.subnode_vcn = kdata
+                nodes += [entry]
+
+            if  r_flags & 2:
+                break
+
+
+            log.debug('')
+
+            #sys.exit()
+
+            """
+            #print 'File reference: 0x{:0X}'.format(file_reference)
+
+            entry.file_reference = FileReference(file_reference)
+
+            entry.length_index_entry = data.getWORD(off + 8)
+            #print 'Length of the index entry: 0x{:0X}'.format(entry.length_index_entry)
+
+            entry.length_stream = data.getWORD(off + 10)
+            #print 'Length of the stream: 0x{:0X}'.format(entry.length_stream)
+
+            entry.index_flags = data.getBYTE(off + 12)
+            log.debug('Index flags: 0x{:0X}'.format(entry.index_flags))
+
+            if entry.index_flags & 1:
+                entry.subnode_vcn = data.getQWORD(off + entry.length_index_entry - 8)
+                log.debug('Last index entry, VCN of the sub-node in the Index Allocation: 0x{:0X}'.format(entry.subnode_vcn))
+                nodes += [entry]
+
+            if entry.index_flags & 2:
+                # last index entry, exiting
+                break
+
+
+            entry.length_of_filename = data.getBYTE(off + 0x50)
+            log.debug('Length of the filename: 0x{:0X}'.format(entry.length_of_filename))
+
+            entry.offset_to_filename = data.getWORD(off + 0x0a)
+            log.debug('Offset to filename: 0x{:0X}'.format(entry.offset_to_filename))
+
+            # in documentation, this seems to be fixed offset
+            # however, this field seems to be wrong, because it's not always equal to 0x52 ...???
+            entry.offset_to_filename = 0x52
+
+            # file name from index (ie_filenname)
+            entry.filename = Helper._widechar_to_ascii( data.getStream(off + entry.offset_to_filename, off + entry.offset_to_filename + entry.length_of_filename*2) )
+            log.debug('Filename: {}'.format(entry.filename))
+
+            # add entry object
+            """
+            entries.append(entry)
+            off += size_entry 
+
+        return nodes, entries
+
 
     def _iterate_index_entries(self, data, off):
         log = Helper.logger()
@@ -237,7 +335,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
         data = DataModel.BufferDataModel(clusters, 'lcn')
         return data
 
-    def _process_INDX(self, data, index_allocation_dataruns):
+    def _process_INDX(self, data, index_allocation_dataruns, iter_function):
         log = Helper.logger()
 
         bytes_per_sector = self.file_record.bytes_per_sector
@@ -281,7 +379,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
         log.debug('Non-leaf node Flag (has sub-nodes): {}'.format(self.non_leaf_node))
 
         log.debug('')
-        #sys.exit()
+
         #off = ofs + 0x58 # FIXME! calculat #0x2a + size_update_seq*2 - 2
 
         # ofs_first_index_entry is relative to 0x18 (documentation says this)
@@ -289,7 +387,8 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
         log.debug('Iterating {} index...'.format(self.attribute.std_header.name))
 
-        nodes, entries = self._iterate_index_entries(data, off)
+        #nodes, entries = self._iterate_index_entries(data, off)
+        nodes, entries = iter_function(data, off)
         if len(nodes) > 0:
             log.debug('!!! We have {} nodes !!!'.format(len(nodes)))
 
@@ -301,9 +400,9 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
                 log.debug('VCN {} not found in data-run, exiting.'.format(vcn))
                 return
 
-            newdata = self._fetch_vcn(vcn, data_run, self.attribute.data)
+            newdata = self._fetch_vcn(vcn, data_run, self.attribute.dataModel)
             log.debug('+++ process b-tree node, vcn: 0x{:x}. +++'.format(vcn))
-            self._process_INDX(newdata, index_allocation_dataruns)
+            self._process_INDX(newdata, index_allocation_dataruns, iter_function)
 
         # add entries
         self.entries.extend(entries)
@@ -315,7 +414,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
         log = Helper.logger()
 
         # file data model from our attribute
-        datamodel = self.attribute.data
+        datamodel = self.attribute.dataModel
 
         # check if we have sub-nodes from root
         if len(self.root_nodes) == 0:
@@ -324,15 +423,17 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
         # check if we have $INDEX_ALLOCATION
         if '$INDEX_ALLOCATION' not in self.file_record.attributes_dict:
+            print self.file_record.attributes_dict
             log.debug('We do not have $INDEX_ALLOCATION attribute, exiting.')
             return
 
-        index_allocation = self.file_record.attributes_dict['$INDEX_ALLOCATION']
+        index_allocation = self.file_record.attributes_dict['$INDEX_ALLOCATION'][0]
 
         # check $I30
         if index_allocation.attribute.std_header.name != '$I30':
-            log.debug('Index {} not supported yet.'.format(index_allocation.attribute.std_header.name))
-            return
+            if index_allocation.attribute.std_header.name != '$R':
+                log.debug('!!! Index {} not supported yet. !!!'.format(index_allocation.attribute.std_header.name))
+                return
 
         # for debugging purpose
         for data_run in index_allocation.attribute.data_runs:
@@ -359,7 +460,11 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
             data = self._fetch_vcn(vcn, data_run, datamodel)
 
             # we should process INDX, recursively
-            self._process_INDX(data, index_allocation.attribute.data_runs)
+
+            if index_allocation.attribute.std_header.name == '$I30':
+                self._process_INDX(data, index_allocation.attribute.data_runs, self._iterate_index_entries)
+            if index_allocation.attribute.std_header.name == '$R': 
+                self._process_INDX(data, index_allocation.attribute.data_runs, self._iterate_index_entries_R)
 
 
     def __init__(self, attribute, file_record):
@@ -405,7 +510,6 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
         if attribute.std_header.name == '$I30':
             # we support only this kind of index
-
             nodes, entries = self._iterate_index_entries(data, off)
             self.entries.extend(entries)
 
@@ -416,8 +520,20 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
             self.root_nodes = nodes
 
+        elif attribute.std_header.name == '$R':
+            nodes, entries = self._iterate_index_entries(data, off)
+            self.entries.extend(entries)
+
+            log.debug('We have {} sub-nodes:'.format(len(nodes)))
+
+            for node in nodes:
+                log.debug('sub-node with VCN: 0x{:x}'.format(node.subnode_vcn))
+
+            self.root_nodes = nodes
+
+
         else:
-            log.debug("Index {} not supported.".format(attribute.std_header.name))
+            log.debug("!!! Index {} not supported. !!!".format(attribute.std_header.name))
 
         log.debug('')
 
@@ -462,7 +578,7 @@ class Attribute_DATA(Attribute_TYPES):
 
         attribute = self.attribute
         file_record = self.file_record
-        dataModel = attribute.data
+        dataModel = attribute.dataModel
 
         blob = ''
         if attribute.std_header.non_resident_flag:
@@ -489,6 +605,64 @@ class Attribute_STANDARD_INFORMATION(Attribute_TYPES):
     def __init__(self, attribute, file_record):
         log = Helper.logger()
         log.debug('')
+
+class Attribute_REPARSE_POINT(Attribute_TYPES):
+    @classmethod
+    def registered_for(cls, attr_type):
+        return attr_type == 0xC0
+
+    def __init__(self, attribute, file_record):
+        #$REPARSE_POINT
+
+        log = Helper.logger()
+        log.debug('')
+
+        data = attribute.data
+        ao   = attribute.ao + attribute.std_header.offset_to_attribute
+
+        self.reparse_type = data.getDWORD(ao + 0x00)
+        log.debug('Reparse type and flags: 0x{:08X}'.format(self.reparse_type))
+
+        self.data_length = data.getWORD(ao + 0x04)
+        log.debug('Reparse data length: 0x{:0X}'.format(self.data_length))
+
+        # assume is symlink
+
+        ao = ao + 0x8
+
+        s_off = data.getWORD(ao + 0x00)
+        s_len = data.getWORD(ao + 0x02)
+
+        p_off = data.getWORD(ao + 0x04)
+        p_len = data.getWORD(ao + 0x06)
+
+
+        log.debug('substitute offset 0x{:x}, len 0x{:x}'.format(s_off, s_len))
+        log.debug('print offset 0x{:x}, len 0x{:x}'.format(p_off, p_len))
+
+        # documentation seems to be wrong about this ?!?!?
+        ao += 0x8
+
+        # it seems i have to add 4 to size ... WHY???
+        buff = data.getStream(ao + s_off, ao + s_off + s_len)
+        if self.reparse_type == 0xA000000C:
+            # TODO! i do not know why is this. documentation says nothing
+            buff = data.getStream(ao + s_off, ao + s_off + s_len + 4)
+
+        self.substitute_path = Helper()._widechar_to_ascii(buff)
+        log.debug('Substitute path: {}'.format(self.substitute_path))
+
+        buff = data.getStream(ao + p_off, ao + p_off + p_len)
+        buff = Helper()._widechar_to_ascii(buff)
+        log.debug('Print path: {}'.format(buff))
+
+
+        path_buffer = data.getStream(ao + 0x10, ao + 0x10 + self.data_length)
+        #print path_buffer
+
+        #self.data = data.getStream(ao + 0x08, ao + 0x08 + self.data_length)
+        #print self.data
+
 
 class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
     @classmethod
@@ -560,11 +734,9 @@ class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
             fr = self.file_record.mft.get_file_record(inode)
             log.debug('+++++ </file record from attribute list> +++++')
 
-            self.file_record.attributes.extend(fr.attributes)
-
-            for k in fr.attributes_dict:
-                # what about duplicates ?
-                self.file_record.attributes_dict[k] = fr.attributes_dict[k]
+            # add attributes
+            for attr in fr.attributes:
+                self.file_record.add_attribute(attr)
 
         log.debug('')
 
@@ -591,6 +763,9 @@ class Attribute_FILE_NAME(Attribute_TYPES):
         log.debug('Flags: 0x{:0X}'.format(self.attr_flags))
 
         self.filename_length = data.getBYTE(ao + attribute.std_header.offset_to_attribute + 0x40)
+
+        self.filename_namespace = data.getBYTE(ao + attribute.std_header.offset_to_attribute + 0x41)
+        log.debug('Filename namespace: {}'.format(self.filename_namespace))
 
         filename_offset = ao + attribute.std_header.offset_to_attribute + 0x42
         attr_filename = data.getStream(filename_offset, filename_offset + self.filename_length * 2)
@@ -619,11 +794,24 @@ class Attribute(object):
         self.ao = ao # stream offset
         self.std_header = AttributeStandardHeader()
 
+
+
 class FileRecord(object):
     def __init__(self, mft):
         self.attributes = []
         self.attributes_dict = {}
         self.mft = mft
+
+    def add_attribute(self, attribute):
+
+        name = attribute.std_header.attrdef.name
+        if name not in self.attributes_dict:
+            self.attributes_dict[name] = [attribute.obj]
+        else:
+            self.attributes_dict[name] += [attribute.obj]
+
+        self.attributes += [attribute]
+
 
 class MFT(object):
     def __init__(self, dataModel):
@@ -940,7 +1128,8 @@ class MFT(object):
 
         log.debug('---=== attributes ===---')
         while 1:
-            attribute = Attribute(self.dataModel, file_record_offset + ao)
+            #attribute = Attribute(self.dataModel, file_record_offset + ao)
+            attribute = Attribute(data, ao)
 
             std_attr_type = data.getDWORD(ao + 0x00)
             if std_attr_type == 0xFFFFFFFF:
@@ -1067,6 +1256,8 @@ class MFT(object):
             attribute.std_header.length = attr_length_2
             attribute.std_header.name = attr_name
 
+            attribute.dataModel = self.dataModel
+
             ao += attr_length
 
             attribute.obj = AttributeType.recognize(attribute, obj)
@@ -1074,8 +1265,9 @@ class MFT(object):
                 self.logger.debug('Attribute {} (0x{:x}) not supported yet.'.format(attribute.std_header.attrdef.name, attribute.std_header.attrdef.type))
                 self.logger.debug('')
 
-            obj.attributes.append(attribute)
-            obj.attributes_dict[attribute.std_header.attrdef.name] = attribute.obj
+            obj.add_attribute(attribute)
+            #obj.attributes.append(attribute)
+            #obj.attributes_dict[attribute.std_header.attrdef.name] = attribute.obj
 
         log.debug('---=== end attributes ===---')
 
@@ -1093,18 +1285,35 @@ class MFT(object):
         # we accept windows path
 
         log = Helper().logger()
+        print path
 
         path = path.split('\\')
 
         fileref = 5
         path = path
-        for dr in path:
+        for i, dr in enumerate(path):
             log.debug('SUNTEM la {}'.format(dr))
 
             root = self.get_file_record(fileref)
 
+            if "$REPARSE_POINT" in root.attributes_dict:
+                print 'are reparse: ' + root.attributes_dict['$FILE_NAME'][0].attr_filename
+                symlink = root.attributes_dict['$REPARSE_POINT'][0].substitute_path
+                log.debug('kaka {}'.format(symlink))
+
+                # solve symlink
+                symlink = symlink[7:]
+                print symlink + '\\' + dr
+                fo = self.get_filerecord_of_path(symlink + '\\' + dr)
+                if fo:
+                    fileref = fo.inode
+                else:
+                    print 'nu-i'
+                    log.debug('not found, abort')
+                continue
+
             if '$INDEX_ROOT' in root.attributes_dict:
-                entries = root.attributes_dict['$INDEX_ROOT'].entries
+                entries = root.attributes_dict['$INDEX_ROOT'][0].entries
                 for entry in entries:
                     log.debug('incerc_root ' + entry.filename)
 
@@ -1119,9 +1328,9 @@ class MFT(object):
 
         root = self.get_file_record(fileref)
         if '$FILE_NAME' in root.attributes_dict:
-            filename = root.attributes_dict['$FILE_NAME'].attr_filename
-
-            if filename == dr:
+            filenames = [x.attr_filename for x in root.attributes_dict['$FILE_NAME']]
+            #print filename
+            if dr in filenames:
                 log.debug('file found.')
                 return root
             else:
