@@ -6,10 +6,12 @@ Attributes supported so far:
  * **$INDEX_ALLOCATION**
  * **$DATA**
  * **$ATTRIBUTE_LIST**
+ * **$REPARSE_POINT **
 
 Supported functions: 
 * parse $MFT
 * list files in directories
 * save content of files
+* will handle symlinks
 
 Example file creates a detailed debug log, so data may be inspected.
