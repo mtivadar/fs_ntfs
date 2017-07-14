@@ -1,4 +1,5 @@
 import logging
+import collections
 
 import DataModel
 
@@ -49,6 +50,12 @@ class Helper(object):
             i += 1
 
 
+class FileNamespace():
+    POSIX         = 0x00
+    WIN32         = 0x01
+    DOS           = 0x02
+    WIN32_AND_DOS = 0x03
+
 class AttrDefEntry(object):
     def __init__(self, a, t, f):
         self._a = a
@@ -95,9 +102,57 @@ class Attribute_TYPES(object):
     def __init__(self, attr_type):
         self.attr_type = attr_type
 
-
     def postprocess(self):
         pass
+
+    def _get_datarun_of_vcn(self, vcn, data_runs):
+
+        k = 0
+        for data_run in data_runs:
+            
+            # file data model from our attribute
+            data = self.attribute.data
+
+            n, lcn = data_run
+
+            """
+            vcn: 1
+            clusters: 1a, 2b, 2c
+            -> 2b, vcn_rel: 0
+            """
+
+            # vcn is in this data_run ?
+            if k <= vcn < k+n:
+                return data_run, vcn - k
+
+            k += n
+
+        return None
+
+
+    def _fetch_vcn(self, vcn, data_run_rel_vcn, datamodel):
+        log = Helper.logger()
+        file_record = self.file_record
+
+        (n, lcn), rel_vcn = data_run_rel_vcn
+
+        log.debug('\t\tVCN relative to data-run: {}'.format(rel_vcn))
+
+        bytes_per_cluster = file_record.sectors_per_cluster * file_record.bytes_per_sector
+        file_offset       = (lcn + rel_vcn) * self.file_record.sectors_per_cluster * self.file_record.bytes_per_sector
+        #size_in_bytes     = n * self.file_record.sectors_per_cluster * self.file_record.bytes_per_sector
+
+        # only one vcn
+        # is it possible to have more than one cluster/entry ? !TODO
+        size_in_bytes     = 1 * self.file_record.sectors_per_cluster * self.file_record.bytes_per_sector
+
+        clusters = datamodel.getStream(file_offset, file_offset + size_in_bytes)
+
+        log.debug('\t\tINDX: 0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
+
+        # buffered data model
+        data = DataModel.BufferDataModel(clusters, 'lcn')
+        return data
 
 class FileReference(object):
     def __init__(self, file_reference):
@@ -183,48 +238,6 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
             log.debug('')
 
-            #sys.exit()
-
-            """
-            #print 'File reference: 0x{:0X}'.format(file_reference)
-
-            entry.file_reference = FileReference(file_reference)
-
-            entry.length_index_entry = data.getWORD(off + 8)
-            #print 'Length of the index entry: 0x{:0X}'.format(entry.length_index_entry)
-
-            entry.length_stream = data.getWORD(off + 10)
-            #print 'Length of the stream: 0x{:0X}'.format(entry.length_stream)
-
-            entry.index_flags = data.getBYTE(off + 12)
-            log.debug('Index flags: 0x{:0X}'.format(entry.index_flags))
-
-            if entry.index_flags & 1:
-                entry.subnode_vcn = data.getQWORD(off + entry.length_index_entry - 8)
-                log.debug('Last index entry, VCN of the sub-node in the Index Allocation: 0x{:0X}'.format(entry.subnode_vcn))
-                nodes += [entry]
-
-            if entry.index_flags & 2:
-                # last index entry, exiting
-                break
-
-
-            entry.length_of_filename = data.getBYTE(off + 0x50)
-            log.debug('Length of the filename: 0x{:0X}'.format(entry.length_of_filename))
-
-            entry.offset_to_filename = data.getWORD(off + 0x0a)
-            log.debug('Offset to filename: 0x{:0X}'.format(entry.offset_to_filename))
-
-            # in documentation, this seems to be fixed offset
-            # however, this field seems to be wrong, because it's not always equal to 0x52 ...???
-            entry.offset_to_filename = 0x52
-
-            # file name from index (ie_filenname)
-            entry.filename = Helper._widechar_to_ascii( data.getStream(off + entry.offset_to_filename, off + entry.offset_to_filename + entry.length_of_filename*2) )
-            log.debug('Filename: {}'.format(entry.filename))
-
-            # add entry object
-            """
             entries.append(entry)
             off += size_entry 
 
@@ -286,54 +299,6 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
         return nodes, entries
 
-    def _get_datarun_of_vcn(self, vcn, data_runs):
-
-        k = 0
-        for data_run in data_runs:
-            
-            # file data model from our attribute
-            data = self.attribute.data
-
-            n, lcn = data_run
-
-            """
-            vcn: 1
-            clusters: 1a, 2b, 2c
-            -> 2b, vcn_rel: 0
-            """
-
-            # vcn is in this data_run ?
-            if k <= vcn < k+n:
-                return data_run, vcn - k
-
-            k += n
-
-        return None
-
-
-    def _fetch_vcn(self, vcn, data_run, datamodel):
-        log = Helper.logger()
-        file_record = self.file_record
-
-        (n, lcn), rel_vcn = data_run
-
-        log.debug('\t\tVCN relative to data-run: {}'.format(rel_vcn))
-
-        bytes_per_cluster = file_record.sectors_per_cluster * file_record.bytes_per_sector
-        file_offset       = (lcn + rel_vcn) * self.file_record.sectors_per_cluster * self.file_record.bytes_per_sector
-        #size_in_bytes     = n * self.file_record.sectors_per_cluster * self.file_record.bytes_per_sector
-
-        # only one vcn
-        # is it possible to have more than one cluster/entry ? !TODO
-        size_in_bytes     = 1 * self.file_record.sectors_per_cluster * self.file_record.bytes_per_sector
-
-        clusters = datamodel.getStream(file_offset, file_offset + size_in_bytes)
-
-        log.debug('\t\tINDX: 0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
-
-        # buffered data model
-        data = DataModel.BufferDataModel(clusters, 'lcn')
-        return data
 
     def _process_INDX(self, data, index_allocation_dataruns, iter_function):
         log = Helper.logger()
@@ -423,7 +388,6 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
         # check if we have $INDEX_ALLOCATION
         if '$INDEX_ALLOCATION' not in self.file_record.attributes_dict:
-            print self.file_record.attributes_dict
             log.debug('We do not have $INDEX_ALLOCATION attribute, exiting.')
             return
 
@@ -570,7 +534,7 @@ class Attribute_DATA(Attribute_TYPES):
                 file_offset = lcn * file_record.sectors_per_cluster * file_record.bytes_per_sector
                 size_in_bytes = n * file_record.sectors_per_cluster * file_record.bytes_per_sector
 
-                log.debug('DATA: 0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
+                log.debug('DATA: 0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {:,}'.format(n, lcn, file_offset, size_in_bytes))
 
         log.debug('')
 
@@ -581,6 +545,8 @@ class Attribute_DATA(Attribute_TYPES):
         dataModel = attribute.dataModel
 
         blob = ''
+
+        size_of_data = attribute.std_header.attr_real_size
         if attribute.std_header.non_resident_flag:
             for data_run in attribute.data_runs:
                 n, lcn = data_run
@@ -590,7 +556,34 @@ class Attribute_DATA(Attribute_TYPES):
                 # size in bytes is rounded-up to cluster size (could hide data)
                 size_in_bytes = n * file_record.sectors_per_cluster * file_record.bytes_per_sector
 
-                blob += dataModel.getStream(file_offset, file_offset + attribute.std_header.attr_real_size)
+                # if the file is big, i guess one chunk is not rounded up
+                size_to_read = min(size_in_bytes, size_of_data)
+
+                if size_of_data == 0:
+                    # I do not know why we have $DATA with real size of zero, but contains data runs...
+                    size_to_read = size_in_bytes
+
+                BIG = 100 * 1024 * 1024
+
+                remains_to_read = size_to_read
+                to_read = min(size_to_read, BIG)
+
+                while to_read <= remains_to_read:
+                    blob += dataModel.getStream(file_offset, file_offset + to_read)
+
+                    file_offset += to_read
+                    remains_to_read -= to_read
+
+                    if remains_to_read == 0:
+                        break
+
+                    to_read = min(remains_to_read, BIG)
+
+
+
+                #blob += dataModel.getStream(file_offset, file_offset + size_to_read)
+
+                size_of_data -= size_to_read
 
             self.blob = blob
 
@@ -658,10 +651,6 @@ class Attribute_REPARSE_POINT(Attribute_TYPES):
 
 
         path_buffer = data.getStream(ao + 0x10, ao + 0x10 + self.data_length)
-        #print path_buffer
-
-        #self.data = data.getStream(ao + 0x08, ao + 0x08 + self.data_length)
-        #print self.data
 
 
 class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
@@ -669,26 +658,56 @@ class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
     def registered_for(cls, attr_type):
         return attr_type == 0x20
 
+    def _fetch_vcns(self, start_vcn, last_vcn, data_runs, datamodel):
+        newdata = ''
+        for vcn in range(start_vcn, last_vcn + 1):
+            data_run = self._get_datarun_of_vcn(vcn, data_runs)
+
+            if data_run == None:
+                log.warning('VCN {} not found in data-run, exiting.'.format(vcn))
+                return
+
+            newdata += self._fetch_vcn(vcn, data_run, datamodel).raw
+
+        data = DataModel.BufferDataModel(newdata, 'vcns')
+        return data
+
     def __init__(self, attribute, file_record):
         # $ATTRIBUTE_LIST
 
         log = Helper.logger()
+        self.attribute = attribute
+        self.file_record = file_record
 
         log.debug('')
 
-        if attribute.std_header.non_resident_flag:
-            log.warning('!!! Only resident type of $ATTRIBUTE_LIST is supported, will exit. !!!')
-            log.debug('')
-            return
-
+        # data model relative in file record
         data = attribute.data
-        self.file_record = file_record
-
         ao   = attribute.ao + attribute.std_header.offset_to_attribute
+
+        if attribute.std_header.non_resident_flag:
+            # attribute is non-residend, fetch it
+
+            for data_run in attribute.data_runs:
+                n, lcn = data_run
+
+                file_offset = lcn * file_record.sectors_per_cluster * file_record.bytes_per_sector
+                size_in_bytes = n * file_record.sectors_per_cluster * file_record.bytes_per_sector
+
+                log.debug('DATA: 0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
+
+            start_vcn = self.attribute.std_header.start_vcn
+            last_vcn = self.attribute.std_header.last_vcn
+
+            data = self._fetch_vcns(start_vcn, last_vcn, self.attribute.data_runs, self.attribute.dataModel)
+            # we have new data buffer, so offset is 0now
+            ao = 0
+
+       
 
         attribute_list_length = attribute.std_header.length
 
-        unq_file_records = set()
+        unq_file_records = collections.OrderedDict()
 
         while attribute_list_length > 0:
             self.type = data.getDWORD(ao + 0x00)
@@ -709,6 +728,9 @@ class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
             self.starting_vcn = data.getQWORD(ao + 0x08)
             log.debug('\t\tStarting VCN: 0x{:0X}'.format(self.starting_vcn))
 
+            self.attribute_id = data.getWORD(ao + 0x18)
+            #log.debug('\t\tAttribute Id: 0x{:0X}'.format(self.attribute_id))            
+
             self.base_file_reference = data.getQWORD(ao + 0x10)
 
             file_reference = FileReference(self.base_file_reference)
@@ -726,7 +748,7 @@ class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
             attribute_list_length -= self.record_length
 
             if file_reference.record_number != self.file_record.inode:
-                unq_file_records.add(file_reference.record_number)
+                unq_file_records[file_reference.record_number] = ''
 
         for inode in unq_file_records:
 
@@ -794,6 +816,11 @@ class Attribute(object):
         self.ao = ao # stream offset
         self.std_header = AttributeStandardHeader()
 
+    def is_non_resident(self):
+        try:
+            return self.std_header.non_resident_flag
+        except AttributeError:
+            raise NtfsError("std_header is probably not set yet!")
 
 
 class FileRecord(object):
@@ -811,6 +838,160 @@ class FileRecord(object):
             self.attributes_dict[name] += [attribute.obj]
 
         self.attributes += [attribute]
+
+    def get_attribute(self, name):
+        if name not in self.attributes_dict:
+            return None
+
+        return self.attributes_dict[name]
+
+    def get_displayed_filename(self):
+        filenames = self.get_file_names()
+
+        for namespace in [FileNamespace.POSIX, FileNamespace.WIN32, FileNamespace.WIN32_AND_DOS, FileNamespace.DOS]:
+            L = [u for u, v in filenames if v == namespace]
+            if len(L) > 0:
+                return L[0]
+
+        return None
+
+
+    def get_file_names(self):
+        filenames_attr = self.get_attribute('$FILE_NAME')
+        if filenames_attr is None:
+            return []
+
+        filenames_attr = [(attr.attr_filename, attr.filename_namespace) for attr in filenames_attr]
+        return filenames_attr
+
+    def fetch_file(self, fo, stream=None):
+        log = Helper().logger()
+
+        log.debug('fetch file...')
+
+        written_size = 0
+        for chunk in self.get_file_data(stream):
+            chunk_size = len(chunk)
+            log.debug('\twrite {:,} bytes to file.'.format(chunk_size))
+            fo.write(chunk)
+
+            written_size += chunk_size
+            log.debug('')
+
+        return written_size
+
+    def get_file_streams(self):
+        log = Helper().logger()
+
+        datas = self.get_attribute('$DATA')
+
+        unnamed_datas = []
+        streams = {}
+
+        if datas is None:
+            # we do not have $DATA
+            return streams
+
+        for data in datas:
+
+            name = data.attribute.std_header.name
+
+            if name:
+                log.debug('stream name: {}'.format(name))
+                if name in streams:
+                    streams[name] += [data]
+                else:
+                    streams[name] = [data]
+
+            else:
+                # can there be unnamed streams that coresponde to different streams? 
+                # ntfs is wired
+                unnamed_datas += [data]
+
+        streams[''] = unnamed_datas
+
+        return streams
+
+
+    def get_file_size(self, stream=None):
+        log = Helper().logger()
+
+        datas = self.get_attribute('$DATA')
+
+        streams = self.get_file_streams()
+
+        if stream is None:
+            stream_datas = streams['']
+        else:
+            if stream in streams:
+                stream_datas = streams[stream]
+            else:
+                log.debug('Stream {} not found.'.format(stream))
+                return None
+
+        first_data = stream_datas[0]
+        file_size = first_data.attribute.std_header.attr_real_size
+
+        return file_size
+
+
+
+    def get_file_data(self, stream=None):
+        log = Helper().logger()
+
+        datas = self.get_attribute('$DATA')
+
+        streams = self.get_file_streams()
+
+        if stream is None:
+            stream_datas = streams['']
+        else:
+            if stream in streams:
+                stream_datas = streams[stream]
+            else:
+                log.debug('Stream {} not found.'.format(stream))
+                raise StopIteration()
+       
+        # sort it. do we need to ?
+        try:
+            stream_datas.sort(key=lambda x: x.attribute.std_header.start_vcn)
+        except AttributeError:
+            # we have resident attributes that do not have 'start_vcn' field.
+            # not sure if we have to treat them differently
+            pass
+
+        # we have a case where data is splitted in multiple $DATA attributes put in an $ATTRIBUTE_LIST
+        # only first $DATA attribute has real_size set, the rest have 0
+        # this is very ambiguous
+
+        first_data = stream_datas[0]
+        try:
+            if first_data.attribute.std_header.start_vcn != 0:
+                log.debug('first data attribute does not have vcn 0 !')
+        except AttributeError:
+            # we have resident attributes that do not have 'start_vcn' field.
+            # not sure if we have to treat them differently
+            pass
+
+        file_size = first_data.attribute.std_header.attr_real_size
+        log.debug('file size: {:,}'.format(file_size))
+
+        file_chunks = ''
+        for data in stream_datas:
+            # fetch
+            chunk = data.get_data()
+
+            log.debug('get {:,} bytes from attribute.'.format(len(chunk)))
+            chunk_size = len(chunk)
+
+            if chunk_size > file_size:
+                # we have this shit when data is splitted accros multiple $DATA attributes with multiple clusters each... why ??
+                yield chunk[:file_size]
+            else:
+                yield chunk
+
+            file_size -= chunk_size
+
 
 
 class MFT(object):
@@ -927,7 +1108,7 @@ class MFT(object):
                     file_offset = lcn * self.sectors_per_cluster * self.bytes_per_sector
                     size_in_bytes = n * self.sectors_per_cluster * self.bytes_per_sector
 
-                    log.debug('0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
+                    log.debug('0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {:,}'.format(n, lcn, file_offset, size_in_bytes))
 
                 self.mft_data_runs = data_runs
                 return data_runs
@@ -1164,6 +1345,9 @@ class MFT(object):
                 log.debug('Length of the attribute: 0x{:0X}'.format(attr_length_2))
                 attr_name = ''
 
+                # data is resident, so this will be length of data
+                attribute.std_header.attr_real_size = attr_length_2
+
             if not non_resident_flag and  attr_name_length:
                 log.debug('Attribute is: {}'.format('resident, named'))
 
@@ -1176,6 +1360,9 @@ class MFT(object):
 
                 attr_length_2 = data.getDWORD(ao + 0x10)
                 log.debug('Length of the attribute: 0x{:0X}'.format(attr_length_2))
+
+                # data is resident, so this will be length of data
+                attribute.std_header.attr_real_size = attr_length_2
 
             if non_resident_flag and not attr_name_length:
 
@@ -1193,7 +1380,7 @@ class MFT(object):
                 offset_to_attribute = data.getWORD(ao + 0x20) 
                 attr_name = ''
 
-                attribute.std_header.starting_vcn = starting_vcn
+                attribute.std_header.start_vcn = starting_vcn
                 attribute.std_header.last_vcn = last_vcn
                 attribute.std_header.attr_real_size = attr_real_size
 
@@ -1208,7 +1395,7 @@ class MFT(object):
                     file_offset = lcn * self.sectors_per_cluster * self.bytes_per_sector
                     size_in_bytes = n * self.sectors_per_cluster * self.bytes_per_sector
 
-                    log.debug('0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
+                    log.debug('0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {:,}'.format(n, lcn, file_offset, size_in_bytes))
 
 
 
@@ -1229,7 +1416,7 @@ class MFT(object):
                 log.debug('Real size of the attribute: 0x{:0X}'.format(attr_real_size))
                 attr_length_2 = attr_real_size
 
-                attribute.std_header.starting_vcn = starting_vcn
+                attribute.std_header.start_vcn = starting_vcn
                 attribute.std_header.last_vcn = last_vcn
                 attribute.std_header.attr_real_size = attr_real_size
 
@@ -1247,7 +1434,7 @@ class MFT(object):
                     file_offset = lcn * self.sectors_per_cluster * self.bytes_per_sector
                     size_in_bytes = n * self.sectors_per_cluster * self.bytes_per_sector
 
-                    log.debug('0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {}'.format(n, lcn, file_offset, size_in_bytes))
+                    log.debug('0x{:04x} clusters @ LCN 0x{:04x}, @ f_offset 0x{:x}, size_in_bytes {:,}'.format(n, lcn, file_offset, size_in_bytes))
 
 
             # populate std_header
@@ -1284,61 +1471,79 @@ class MFT(object):
     def get_filerecord_of_path(self, path):
         # we accept windows path
 
+        # this is not an efficient implementation, because all antries are already fetched
+        # so we are not using b-trees here actually. everything is fetched when get_file_record
+        # is used. Anyway, this is not for speed, is mainly for investigating/research/play/whatever
+
         log = Helper().logger()
-        print path
+
+        log.debug('')
+        log.debug('traversing path: {}'.format(path))
 
         path = path.split('\\')
 
+        # start from root
         fileref = 5
         path = path
-        for i, dr in enumerate(path):
-            log.debug('SUNTEM la {}'.format(dr))
+        for i, current in enumerate(path):
+            log.debug('we search for: {}'.format(current))
 
             root = self.get_file_record(fileref)
 
             if "$REPARSE_POINT" in root.attributes_dict:
-                print 'are reparse: ' + root.attributes_dict['$FILE_NAME'][0].attr_filename
-                symlink = root.attributes_dict['$REPARSE_POINT'][0].substitute_path
-                log.debug('kaka {}'.format(symlink))
+                log.debug('reparse point: {}'.format(root.get_displayed_filename()))
 
-                # solve symlink
+                symlink = root.attributes_dict['$REPARSE_POINT'][0].substitute_path
+                log.debug('symlink: {}'.format(symlink))
+
+                # get rid of windows stuff
                 symlink = symlink[7:]
-                print symlink + '\\' + dr
-                fo = self.get_filerecord_of_path(symlink + '\\' + dr)
+                log.debug('resolved path: {}'.format(symlink + '\\' + current))
+
+                # search in symlink target
+                fo = self.get_filerecord_of_path(symlink + '\\' + current)
                 if fo:
                     fileref = fo.inode
                 else:
-                    print 'nu-i'
                     log.debug('not found, abort')
+                    return None
+
                 continue
 
             if '$INDEX_ROOT' in root.attributes_dict:
+                # can we have more than one $INDEX_ROOT ?
+
                 entries = root.attributes_dict['$INDEX_ROOT'][0].entries
                 for entry in entries:
-                    log.debug('incerc_root ' + entry.filename)
+                    log.debug('entry: {}'.format(entry.filename))
 
-                    if dr == entry.filename:
+                    if current == entry.filename:
                         fileref = entry.file_reference.record_number
-                        log.debug('merg ROOT pe asta 0x{:X}'.format(fileref))
+                        log.debug('we select this entry: 0x{:X} (#{})'.format(fileref, fileref))
+                        break
+
 
             else:
-                log.debug('YOU ARE FUCKED')
+                log.debug('No index_root, no reparse ... nothing to do ...')
                 break
                         
 
+        # last file reference
         root = self.get_file_record(fileref)
-        if '$FILE_NAME' in root.attributes_dict:
-            filenames = [x.attr_filename for x in root.attributes_dict['$FILE_NAME']]
-            #print filename
-            if dr in filenames:
-                log.debug('file found.')
-                return root
-            else:
-                log.debug('file not found.')
-                return None
-        else:
-                return None
-                
+        filenames = root.get_file_names()
+        if filenames is None:
+            log.debug('file not found.')
+            return None
+
+        filenames = [name for name, namespace in filenames]
+
+        if current in filenames:
+            log.debug('file found.')
+            return root
+
+        log.debug('file not found.')
+        return None
+
 
     def _get_le(self, s):
         n = 0x00
