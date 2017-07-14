@@ -116,7 +116,9 @@ class Slice(object):
         which_sector = sectors * bytes_per_sector
         self._fo.seek(which_sector)
 
+        # careful for big data
         result = bytearray(self._fo.read(stop - which_sector))
+        
         result = result[start-which_sector:]
         return result
 
