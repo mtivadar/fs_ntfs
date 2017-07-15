@@ -15,9 +15,9 @@ Supported functions:
 * save content of alternate data streams
 * will handle symlinks
 
-```
-Example file creates a detailed debug log, so data may be inspected.
+Example file creates a detailed **debug log**, so data may be inspected.
 
+```
 usage: ntfs_parse.py [-h] [-f FILERECORD | -s SEARCH] [-w] [-l [LIST]]
                      [-q | -L LOG_FILE]
                      image
