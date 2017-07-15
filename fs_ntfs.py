@@ -943,7 +943,9 @@ class FileRecord(object):
 
                     name = a.filename
 
-                    already.add(a.file_reference.record_number)
+                    if a.filename_namespace & FileNamespace.WIN32:
+                        # not quite ok, some of the files will duplicate
+                        already.add(a.file_reference.record_number)
 
                     fr = self.mft.get_file_record(a.file_reference.record_number)
                     Res = fr.list_dir(levels-1)
