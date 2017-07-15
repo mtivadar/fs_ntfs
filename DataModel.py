@@ -6,7 +6,7 @@ class DataModel(object):
         self.data = data
 
     def getQWORD(self, offset, asString=False):
-        if offset + 8 > len(self.data):
+        if offset + 8 > self.size():
             return None
 
         b = bytearray(self.data[offset:offset+8])
@@ -21,7 +21,7 @@ class DataModel(object):
         return s
 
     def getDWORD(self, offset, asString=False):
-        if offset + 4 >= len(self.data):
+        if offset + 4 >= self.size():
             return None
 
         b = bytearray(self.data[offset:offset+4])
@@ -36,7 +36,7 @@ class DataModel(object):
         return s
 
     def getWORD(self, offset, asString=False):
-        if offset + 2 > len(self.data):
+        if offset + 2 > self.size():
             return None
 
         b = bytearray(self.data[offset:offset+2])
@@ -51,7 +51,7 @@ class DataModel(object):
         return s
 
     def getBYTE(self, offset, asString=False):
-        if offset + 1 > len(self.data):
+        if offset + 1 > self.size():
             return None
 
         b = bytearray(self.data[offset:offset+1])
@@ -69,7 +69,7 @@ class DataModel(object):
         if offset < 0:
             return None
 
-        if offset >= len(self.data):
+        if offset >= self.size():
             return None
 
         return self.data[offset]
@@ -111,7 +111,8 @@ class Slice(object):
         # seek to sector
         # assume 0x200 bytes/sector
         bytes_per_sector = 0x200
-        sectors = start / bytes_per_sector
+
+        sectors = start // bytes_per_sector
 
         which_sector = sectors * bytes_per_sector
         self._fo.seek(which_sector)
@@ -162,7 +163,7 @@ class MappedFileDataModel(DataModel):
         # open for writing
         try:
             self._f = open(self._filename, "r+b")
-        except Exception, e:
+        except Exception as e:
             # could not open for writing
             return False
         self._f.write(self._mapped)
