@@ -930,26 +930,31 @@ class FileRecord(object):
         if indexs is None:
             return None
 
-        D = collections.OrderedDict()
+        D = []
         for index in indexs:
             
-            names = collections.OrderedDict()
-
             already = set()
+
             for a in index.entries:
-                if a.file_reference.record_number not in already:
+                if a.filename_namespace == FileNamespace.DOS:
                     # we check set to exclude duplicates. almost all
                     # files have DOS & WIN32 namespace filenames
 
+                    # will we miss files this way ?
+                    continue
+
+                if a.file_reference.record_number not in already:
+
+                    already.add(a.file_reference.record_number)
                     name = a.filename
 
-                    if a.filename_namespace & FileNamespace.WIN32:
-                        # not quite ok, some of the files will duplicate
-                        already.add(a.file_reference.record_number)
+                    if a.file_reference.record_number != 5:
+                        fr = self.mft.get_file_record(a.file_reference.record_number)
 
-                    fr = self.mft.get_file_record(a.file_reference.record_number)
-                    Res = fr.list_dir(levels-1)
-                    D[name] = Res
+                        Res = fr.list_dir(levels-1)
+                        D.append((name, Res))
+                    else:
+                        D.append((name, None))
 
         return D
 

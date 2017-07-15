@@ -66,12 +66,12 @@ def print_dir(dirs, delim='  '):
 
     import textwrap
 
-    for root in dirs:
-        #print(''.format(root))
+    for root, subdirs in dirs:
+
         text = textwrap.indent(root, delim + '|- ')
         print(text)
-        if dirs[root] is not None:
-            print_dir(dirs[root], delim + '   ')
+        if subdirs is not None:
+            print_dir(subdirs, delim + '   ')
     
 
 def main():
@@ -116,7 +116,7 @@ def main():
         dirs = fr.list_dir(args.list)
         name = fr.get_displayed_filename()
 
-        dirs = {name: dirs}
+        dirs = [(name, dirs)]
         print_dir(dirs)
 
     if args.fetch_file:
