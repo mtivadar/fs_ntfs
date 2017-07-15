@@ -25,10 +25,11 @@ def arg_options():
     group.add_argument("-s", "--search", help="Search path. Will dump all info traversing directories.")
 
     parser.add_argument("-w", "--fetch-file", help="Fetch all file's streams.", action="store_true")
+    parser.add_argument("-l", "--list", help="List files, specify recursion depth (default is 2). Give -1 for a full recursion.", type=int, nargs='?', const=2)
 
     group1 = parser.add_mutually_exclusive_group()
     group1.add_argument("-q", "--quiet", help="No logging.", action="store_true")
-    group1.add_argument("-l", "--log-file", help="Write to this logfile.")
+    group1.add_argument("-L", "--log-file", help="Write to this logfile.")
 
 
     if len(sys.argv) == 1:
@@ -41,7 +42,7 @@ def arg_options():
 
 def save_it(fr):
     if fr is None:
-        print 'file was not found, nothing to fetch.'
+        print('file was not found, nothing to fetch.')
         return
 
     filename = fr.get_displayed_filename()
@@ -56,11 +57,22 @@ def save_it(fr):
             display_filename = filename + ':' + s
        
         fo = open(save_filename, 'wb+')
-        print 'fetching file "{}", size {:,} bytes...'.format(display_filename, fr.get_file_size(stream=s))
+        print('fetching file "{}", size {:,} bytes...'.format(display_filename, fr.get_file_size(stream=s)))
 
         fr.fetch_file(fo, stream=s)
         fo.close()
 
+def print_dir(dirs, delim='  '):
+
+    import textwrap
+
+    for root in dirs:
+        #print(''.format(root))
+        text = textwrap.indent(root, delim + '|- ')
+        print(text)
+        if dirs[root] is not None:
+            print_dir(dirs[root], delim + '   ')
+    
 
 def main():
     args = arg_options()
@@ -98,12 +110,19 @@ def main():
 
         fr = mymft.get_filerecord_of_path(args.search)
         if fr is None:
-            print 'file was not found.'
+            print('file was not found.')
+
+    if args.list:
+        dirs = fr.list_dir(args.list)
+        name = fr.get_displayed_filename()
+
+        dirs = {name: dirs}
+        print_dir(dirs)
 
     if args.fetch_file:
         save_it(fr)
 
-    print 'done, see log file.'
+    print('\ndone, see log file.')
     return
 
 if __name__ == '__main__':
