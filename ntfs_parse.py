@@ -8,13 +8,13 @@ import DataModel
 
 def arg_options():
 
-    usage = """Usage: example.py \\\\.\\c: -f 0 --fetch-file
-       example.py \\\\.\\c: -s $MFT --fetch-file
-       example.py \\\\.\\c: -s $MFTMirr
-       example.py \\\\.\\c: -s C:\pagefile.sys --fetch-file
-       example.py \\\\.\\c: -s "Documents and Settings\\All Users\\Application Data\\Start Menu\\desktop.ini" --fetch-file
+    usage = """Usage: ntfs_parse.py \\\\.\\c: -f 0 --fetch-file
+       ntfs_parse.py \\\\.\\c: -s $MFT --fetch-file
+       ntfs_parse.py \\\\.\\c: -s $MFTMirr
+       ntfs_parse.py \\\\.\\c: -s C:\pagefile.sys --fetch-file
+       ntfs_parse.py \\\\.\\c: -s "Documents and Settings\\All Users\\Application Data\\Start Menu\\desktop.ini" --fetch-file
            note: ?:\ and quotes will be skipped.
-       example.py ntfs_image -f 123 --fetch-file
+       ntfs_parse.py ntfs_image -f 123 --fetch-file
        """
 
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter, epilog=usage)
