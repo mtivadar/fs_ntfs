@@ -279,6 +279,12 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
                 break
 
 
+            entry.real_size_of_file = data.getQWORD(off + 0x40)
+            log.debug('Real size of file: {:,}'.format(entry.real_size_of_file))
+
+            entry.filename_namespace = data.getBYTE(off + 0x51)
+            log.debug('Filename namespace: {}'.format(entry.filename_namespace))
+
             entry.length_of_filename = data.getBYTE(off + 0x50)
             log.debug('Length of the filename: 0x{:0X}'.format(entry.length_of_filename))
 
@@ -310,7 +316,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
         indx_magic = data.getStream(ofs, ofs + 4)
         log.debug('Magic: {}'.format(indx_magic))
 
-        if indx_magic != 'INDX':
+        if indx_magic != b'INDX':
             log.debug('Bad magic: {}, continue anyway with next data-run'.format(indx_magic))
             
 
@@ -544,9 +550,12 @@ class Attribute_DATA(Attribute_TYPES):
         file_record = self.file_record
         dataModel = attribute.dataModel
 
-        blob = ''
+        blob = bytearray()
 
         size_of_data = attribute.std_header.attr_real_size
+        if not attribute.std_header.non_resident_flag:
+            yield self.blob
+
         if attribute.std_header.non_resident_flag:
             for data_run in attribute.data_runs:
                 n, lcn = data_run
@@ -569,7 +578,8 @@ class Attribute_DATA(Attribute_TYPES):
                 to_read = min(size_to_read, BIG)
 
                 while to_read <= remains_to_read:
-                    blob += dataModel.getStream(file_offset, file_offset + to_read)
+                    blob = dataModel.getStream(file_offset, file_offset + to_read)
+                    yield blob
 
                     file_offset += to_read
                     remains_to_read -= to_read
@@ -588,7 +598,7 @@ class Attribute_DATA(Attribute_TYPES):
             self.blob = blob
 
         # if $data is resident, blob will be set in __init__
-        return self.blob
+#        return self.blob
 
 class Attribute_STANDARD_INFORMATION(Attribute_TYPES):
     @classmethod
@@ -659,7 +669,7 @@ class Attribute_ATTRIBUTE_LIST(Attribute_TYPES):
         return attr_type == 0x20
 
     def _fetch_vcns(self, start_vcn, last_vcn, data_runs, datamodel):
-        newdata = ''
+        newdata = bytearray()
         for vcn in range(start_vcn, last_vcn + 1):
             data_run = self._get_datarun_of_vcn(vcn, data_runs)
 
@@ -912,8 +922,67 @@ class FileRecord(object):
 
         return streams
 
+    def list_dir(self, levels=1):
+        if levels == 0:
+            return None
+
+        indexs = self.get_attribute('$INDEX_ROOT')
+        if indexs is None:
+            return None
+
+        D = collections.OrderedDict()
+        for index in indexs:
+            
+            names = collections.OrderedDict()
+
+            already = set()
+            for a in index.entries:
+                if a.file_reference.record_number not in already:
+                    # we check set to exclude duplicates. almost all
+                    # files have DOS & WIN32 namespace filenames
+
+                    name = a.filename
+
+                    already.add(a.file_reference.record_number)
+
+                    fr = self.mft.get_file_record(a.file_reference.record_number)
+                    Res = fr.list_dir(levels-1)
+                    D[name] = Res
+
+        return D
+
+    def _has_reparse_point(self):
+        return self.get_attribute('$REPARSE_POINT')
+
+    def _get_reparse_point(self):
+        log = Helper().logger()
+
+        root = self
+
+        if self._has_reparse_point():
+            log.debug('reparse point: {}'.format(root.get_displayed_filename()))
+
+            reparse = root.get_attribute('$REPARSE_POINT')
+
+            symlink = reparse[0].substitute_path
+            log.debug('symlink: {}'.format(symlink))
+
+            # get rid of windows stuff
+            symlink = symlink[7:]
+
+            resolved = symlink
+            log.debug('resolved path: {}'.format(resolved))
+
+            return resolved
+
+        else:
+            return None
+
 
     def get_file_size(self, stream=None):
+        # also we have real_size_of_file from $FILE_NAME
+        # but no ADS
+
         log = Helper().logger()
 
         datas = self.get_attribute('$DATA')
@@ -979,18 +1048,19 @@ class FileRecord(object):
         file_chunks = ''
         for data in stream_datas:
             # fetch
-            chunk = data.get_data()
+            for chunk in data.get_data():
+            #chunk = data.get_data()
 
-            log.debug('get {:,} bytes from attribute.'.format(len(chunk)))
-            chunk_size = len(chunk)
+                log.debug('get {:,} bytes from attribute.'.format(len(chunk)))
+                chunk_size = len(chunk)
 
-            if chunk_size > file_size:
-                # we have this shit when data is splitted accros multiple $DATA attributes with multiple clusters each... why ??
-                yield chunk[:file_size]
-            else:
-                yield chunk
+                if chunk_size > file_size:
+                    # we have this shit when data is splitted accros multiple $DATA attributes with multiple clusters each... why ??
+                    yield chunk[:file_size]
+                else:
+                    yield chunk
 
-            file_size -= chunk_size
+                file_size -= chunk_size
 
 
 
@@ -1126,7 +1196,7 @@ class MFT(object):
             start_mft = lcn * self.sectors_per_cluster * self.bytes_per_sector
             mft_size_in_bytes = n * self.sectors_per_cluster * self.bytes_per_sector
 
-            n_file_records = mft_size_in_bytes / self.file_record_size
+            n_file_records = mft_size_in_bytes // self.file_record_size
 
             if which_file_record < n_file_records:
                 return (n, lcn, which_file_record)
@@ -1244,7 +1314,7 @@ class MFT(object):
 
         magic = data.getStream(fr + 0x00, fr + 0x04)
      
-        if magic != "FILE":
+        if magic != b"FILE":
             log.debug('magic does not mach "FILE", instead: {}.'.format(magic))
             return None
             #raise NtfsError('magic should mach "FILE", offset 0x{:x}'.format(fr))
@@ -1538,6 +1608,11 @@ class MFT(object):
         filenames = [name for name, namespace in filenames]
 
         if current in filenames:
+            if root._has_reparse_point():
+                symlink = root._get_reparse_point()
+                root = self.get_filerecord_of_path(symlink)
+
+
             log.debug('file found.')
             return root
 
