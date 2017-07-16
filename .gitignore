@@ -1,1 +1,3 @@
 *.pyc
+!testcases
+!logfile-ntfsparser
