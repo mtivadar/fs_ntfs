@@ -108,7 +108,7 @@ class FileRecord(object):
             already = set()
 
             for a in index.entries:
-                if a.filename_namespace == FileNamespace.DOS:
+                if a.filename_namespace == fs_ntfs.NTFS.FileNamespace.DOS:
                     # we check set to exclude duplicates. almost all
                     # files have DOS & WIN32 namespace filenames
 

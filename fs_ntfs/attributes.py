@@ -329,7 +329,12 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
             nodes, entries = obj_index.iterate_index_entries(data, off)
 
         elif attribute.std_header.name == '$R':
+            # cannot use factory because we have to call same interations as in $I30... why... ?
             nodes, entries = obj_index.iterate_index_entries(data, off)
+
+        else:
+            log.debug("!!! Index {} not supported. !!!".format(attribute.std_header.name))
+            return
 
         self.entries.extend(entries)
 
