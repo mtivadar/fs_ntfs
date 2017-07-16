@@ -23,6 +23,7 @@ def arg_options():
     group = parser.add_mutually_exclusive_group()
     group.add_argument("-f", "--filerecord", help="Dump info for file record number.", type=int)
     group.add_argument("-s", "--search", help="Search path. Will dump all info traversing directories.")
+    group.add_argument("-r", "--reparse", help="Dump $Reparse file data.", action='store_true')
 
     parser.add_argument("-w", "--fetch-file", help="Fetch all file's streams.", action="store_true")
     parser.add_argument("-l", "--list", help="List files, specify recursion depth (default is 2). Give -1 for a full recursion.", type=int, nargs='?', const=2)
@@ -73,6 +74,22 @@ def print_dir(dirs, delim='  '):
         if subdirs is not None:
             print_dir(subdirs, delim + '   ')
     
+def dump_reparse(mft):
+    D = mft.get_reparse_points()
+    if D is None:
+        print('Nothing to print, check debug log file.')
+
+    print('{:<10} {:<40}    {}'.format('file record', 'symlink', 'reparse point'))
+    print('')
+
+    A = {}
+    for record, symlink, reparse in D:
+        if record not in A:
+            # don't know why we have file duplicates. not important right now.
+            # maybe this is the intended behaviour
+            print('#{:<10} {:<40} -> {}'.format(record, symlink, reparse))
+        else:
+            A[record] = 0
 
 def main():
     args = arg_options()
@@ -121,6 +138,9 @@ def main():
 
     if args.fetch_file:
         save_it(fr)
+
+    if args.reparse:
+        dump_reparse(mymft)
 
     print('\ndone, see log file.')
     return
