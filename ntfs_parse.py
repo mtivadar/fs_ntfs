@@ -2,8 +2,8 @@ import sys
 import logging
 import argparse
 
-import fs_ntfs
-import DataModel
+import fs_ntfs.fs_ntfs as fs_ntfs
+import fs_ntfs.DataModel
 
 
 def arg_options():
@@ -110,13 +110,10 @@ def main():
 
     image = args.image.strip('"')
     
-    mymft = fs_ntfs.MFT(DataModel.FileDataModel(image))
-
-    mymft._get_mft_data_runs()
-    mymft._build_attrdef()
+    ntfs = fs_ntfs.fs_ntfs.NTFS(fs_ntfs.DataModel.FileDataModel(image))
 
     if args.filerecord is not None:
-        fr = mymft.get_file_record(args.filerecord)
+        fr = ntfs.mft.get_file_record(args.filerecord)
 
     if args.search is not None:
         name = args.search
@@ -125,7 +122,7 @@ def main():
             if name[1] == ':' and name[2] == '\\':
                 name = name[3:]
 
-        fr = mymft.get_filerecord_of_path(args.search)
+        fr = ntfs.mft.get_filerecord_of_path(args.search)
         if fr is None:
             print('file was not found.')
 
@@ -140,7 +137,7 @@ def main():
         save_it(fr)
 
     if args.reparse:
-        dump_reparse(mymft)
+        dump_reparse(ntfs.mft)
 
     print('\ndone, see log file.')
     return
