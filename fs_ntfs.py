@@ -97,6 +97,165 @@ class AttrDef(object):
 class AttributeStandardHeader(object):
     def __init__(self):
         pass
+
+class IndexTypeFactory(object):
+    @staticmethod
+    def recognize(index_name):
+        for cls in Index_TYPES.__subclasses__():
+            if cls.registered_for(index_name):
+                return cls()
+
+        return None
+
+class Index_TYPES(object):
+    def __init__(self, index_name):
+        self.index_name = index_name
+
+    def iterate_index_entries(self, data, off):
+        pass
+
+class Index_R(Index_TYPES):
+    @classmethod
+    def registered_for(cls, index_name):
+        return index_name == '$R'
+
+    def __init__(self):
+        # $R
+
+        log = Helper.logger()
+        return
+
+    def iterate_index_entries(self, data, off):
+        log = Helper.logger()
+
+        nodes = []
+        entries = []
+        while 1:
+            log.debug('')
+            log.debug('-= index entry =-')
+
+            entry = IndexEntry()
+
+            # index entry
+            offset_data = data.getWORD(off + 0)
+            log.debug('offset to data: 0x{:x}'.format(offset_data))
+
+            size_data = data.getWORD(off + 0x2)
+            log.debug('size of data: 0x{:x}'.format(size_data))
+
+            size_entry = data.getWORD(off + 0x8)
+            log.debug('size of entry: 0x{:x}'.format(size_entry))
+
+            size_key = data.getWORD(off + 0xA)
+            log.debug('size of key: 0x{:x}'.format(size_key))
+
+            r_flags = data.getWORD(off + 0x0C)
+            log.debug('flags: 0x{:x}'.format(r_flags))
+
+            tag = data.getDWORD(off + 0x10)
+            log.debug('key reparse tag: 0x{:x}'.format(tag))
+
+            key_mft = data.getQWORD(off + 0x14)
+
+            entry.mft_file_record = FileReference(key_mft)
+            key_mft_fr = entry.mft_file_record.record_number
+
+            log.debug('key mft reference of reparse point: 0x{:x}, 0x{:x}'.format(key_mft, key_mft_fr))
+            
+            #self.file_record.mft.get_file_record(key_mft_fr)
+
+            if r_flags & 1:
+                vcn = data.getDWORD(off + 0x20)
+                log.debug('vcn 0x{:x}'.format(vcn))
+
+                entry.subnode_vcn = vcn
+                nodes += [entry]
+
+            if  r_flags & 2:
+                break
+
+
+            log.debug('')
+
+            entries.append(entry)
+            off += size_entry 
+
+        return nodes, entries
+
+
+class Index_I30(Index_TYPES):
+    @classmethod
+    def registered_for(cls, index_name):
+        return index_name == '$I30'
+
+    def __init__(self):
+        # $I30
+
+        log = Helper.logger()
+        return
+
+    def iterate_index_entries(self, data, off):
+        log = Helper.logger()
+
+        nodes = []
+        entries = []
+        while 1:
+            log.debug('')
+            log.debug('-= index entry =-')
+
+            entry = IndexEntry()
+
+            # index entry
+            file_reference = data.getQWORD(off + 0)
+            #print 'File reference: 0x{:0X}'.format(file_reference)
+            entry.file_reference = FileReference(file_reference)
+
+            entry.length_index_entry = data.getWORD(off + 8)
+            #print 'Length of the index entry: 0x{:0X}'.format(entry.length_index_entry)
+
+            entry.length_stream = data.getWORD(off + 10)
+            #print 'Length of the stream: 0x{:0X}'.format(entry.length_stream)
+
+            entry.index_flags = data.getBYTE(off + 12)
+            log.debug('Index flags: 0x{:0X}'.format(entry.index_flags))
+
+            if entry.index_flags & 1:
+                entry.subnode_vcn = data.getQWORD(off + entry.length_index_entry - 8)
+                log.debug('Last index entry, VCN of the sub-node in the Index Allocation: 0x{:0X}'.format(entry.subnode_vcn))
+                nodes += [entry]
+
+            if entry.index_flags & 2:
+                # last index entry, exiting
+                break
+
+
+            entry.real_size_of_file = data.getQWORD(off + 0x40)
+            log.debug('Real size of file: {:,}'.format(entry.real_size_of_file))
+
+            entry.filename_namespace = data.getBYTE(off + 0x51)
+            log.debug('Filename namespace: {}'.format(entry.filename_namespace))
+
+            entry.length_of_filename = data.getBYTE(off + 0x50)
+            log.debug('Length of the filename: 0x{:0X}'.format(entry.length_of_filename))
+
+            entry.offset_to_filename = data.getWORD(off + 0x0a)
+            log.debug('Offset to filename: 0x{:0X}'.format(entry.offset_to_filename))
+
+            # in documentation, this seems to be fixed offset
+            # however, this field seems to be wrong, because it's not always equal to 0x52 ...???
+            entry.offset_to_filename = 0x52
+
+            # file name from index (ie_filenname)
+            entry.filename = Helper._widechar_to_ascii( data.getStream(off + entry.offset_to_filename, off + entry.offset_to_filename + entry.length_of_filename*2) )
+            log.debug('Filename: {}'.format(entry.filename))
+
+            # add entry object
+            entries.append(entry)
+            off += entry.length_index_entry 
+
+        return nodes, entries
+
+
     
 class Attribute_TYPES(object):
     def __init__(self, attr_type):
@@ -187,124 +346,6 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
     @classmethod
     def registered_for(cls, attr_type):
         return attr_type == 0x90
-
-    def _iterate_index_entries_R(self, data, off):
-        log = Helper.logger()
-
-        nodes = []
-        entries = []
-        while 1:
-            log.debug('')
-            log.debug('-= index entry =-')
-
-            entry = IndexEntry()
-
-            # index entry
-            offset_data = data.getWORD(off + 0)
-            log.debug('offset to data: 0x{:x}'.format(offset_data))
-
-            size_data = data.getWORD(off + 0x2)
-            log.debug('size of data: 0x{:x}'.format(size_data))
-
-            size_entry = data.getWORD(off + 0x8)
-            log.debug('size of entry: 0x{:x}'.format(size_entry))
-
-            size_key = data.getWORD(off + 0xA)
-            log.debug('size of key: 0x{:x}'.format(size_key))
-
-            r_flags = data.getWORD(off + 0x0C)
-            log.debug('flags: 0x{:x}'.format(r_flags))
-
-            tag = data.getDWORD(off + 0x10)
-            log.debug('key reparse tag: 0x{:x}'.format(tag))
-
-            key_mft = data.getQWORD(off + 0x14)
-            key_mft_fr = FileReference(key_mft).record_number
-            log.debug('key mft reference of reparse point: 0x{:x}, 0x{:x}'.format(key_mft, key_mft_fr))
-            
-
-            self.file_record.mft.get_file_record(key_mft_fr)
-
-            if r_flags & 1:
-                kdata = data.getDWORD(off + 0x20)
-                log.debug('vcn 0x{:x}'.format(kdata))
-
-                entry.subnode_vcn = kdata
-                nodes += [entry]
-
-            if  r_flags & 2:
-                break
-
-
-            log.debug('')
-
-            entries.append(entry)
-            off += size_entry 
-
-        return nodes, entries
-
-
-    def _iterate_index_entries(self, data, off):
-        log = Helper.logger()
-
-        nodes = []
-        entries = []
-        while 1:
-            log.debug('')
-            log.debug('-= index entry =-')
-
-            entry = IndexEntry()
-
-            # index entry
-            file_reference = data.getQWORD(off + 0)
-            #print 'File reference: 0x{:0X}'.format(file_reference)
-            entry.file_reference = FileReference(file_reference)
-
-            entry.length_index_entry = data.getWORD(off + 8)
-            #print 'Length of the index entry: 0x{:0X}'.format(entry.length_index_entry)
-
-            entry.length_stream = data.getWORD(off + 10)
-            #print 'Length of the stream: 0x{:0X}'.format(entry.length_stream)
-
-            entry.index_flags = data.getBYTE(off + 12)
-            log.debug('Index flags: 0x{:0X}'.format(entry.index_flags))
-
-            if entry.index_flags & 1:
-                entry.subnode_vcn = data.getQWORD(off + entry.length_index_entry - 8)
-                log.debug('Last index entry, VCN of the sub-node in the Index Allocation: 0x{:0X}'.format(entry.subnode_vcn))
-                nodes += [entry]
-
-            if entry.index_flags & 2:
-                # last index entry, exiting
-                break
-
-
-            entry.real_size_of_file = data.getQWORD(off + 0x40)
-            log.debug('Real size of file: {:,}'.format(entry.real_size_of_file))
-
-            entry.filename_namespace = data.getBYTE(off + 0x51)
-            log.debug('Filename namespace: {}'.format(entry.filename_namespace))
-
-            entry.length_of_filename = data.getBYTE(off + 0x50)
-            log.debug('Length of the filename: 0x{:0X}'.format(entry.length_of_filename))
-
-            entry.offset_to_filename = data.getWORD(off + 0x0a)
-            log.debug('Offset to filename: 0x{:0X}'.format(entry.offset_to_filename))
-
-            # in documentation, this seems to be fixed offset
-            # however, this field seems to be wrong, because it's not always equal to 0x52 ...???
-            entry.offset_to_filename = 0x52
-
-            # file name from index (ie_filenname)
-            entry.filename = Helper._widechar_to_ascii( data.getStream(off + entry.offset_to_filename, off + entry.offset_to_filename + entry.length_of_filename*2) )
-            log.debug('Filename: {}'.format(entry.filename))
-
-            # add entry object
-            entries.append(entry)
-            off += entry.length_index_entry 
-
-        return nodes, entries
-
 
     def _process_INDX(self, data, index_allocation_dataruns, iter_function):
         log = Helper.logger()
@@ -399,11 +440,12 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
         index_allocation = self.file_record.attributes_dict['$INDEX_ALLOCATION'][0]
 
-        # check $I30
-        if index_allocation.attribute.std_header.name != '$I30':
-            if index_allocation.attribute.std_header.name != '$R':
-                log.debug('!!! Index {} not supported yet. !!!'.format(index_allocation.attribute.std_header.name))
-                return
+        # check if index type is registered
+
+        obj_index = IndexTypeFactory.recognize(index_allocation.attribute.std_header.name)
+        if obj_index is None:
+            log.debug('!!! Index {} not supported yet. !!!'.format(index_allocation.attribute.std_header.name))
+            return
 
         # for debugging purpose
         for data_run in index_allocation.attribute.data_runs:
@@ -430,11 +472,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
             data = self._fetch_vcn(vcn, data_run, datamodel)
 
             # we should process INDX, recursively
-
-            if index_allocation.attribute.std_header.name == '$I30':
-                self._process_INDX(data, index_allocation.attribute.data_runs, self._iterate_index_entries)
-            if index_allocation.attribute.std_header.name == '$R': 
-                self._process_INDX(data, index_allocation.attribute.data_runs, self._iterate_index_entries_R)
+            self._process_INDX(data, index_allocation.attribute.data_runs, obj_index.iterate_index_entries)
 
 
     def __init__(self, attribute, file_record):
@@ -478,32 +516,27 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
         off = ofs + 16 + 16
         self.root_nodes = []
 
+
+        # i'm not sure why in index_root, index type == $R, we actually have the format from $I30
+        obj_index = IndexTypeFactory.recognize('$I30')#attribute.std_header.name)
+        if obj_index is None:
+            log.debug("!!! Index {} not supported. !!!".format(attribute.std_header.name))
+
         if attribute.std_header.name == '$I30':
             # we support only this kind of index
-            nodes, entries = self._iterate_index_entries(data, off)
-            self.entries.extend(entries)
-
-            log.debug('We have {} sub-nodes:'.format(len(nodes)))
-
-            for node in nodes:
-                log.debug('sub-node with VCN: 0x{:x}'.format(node.subnode_vcn))
-
-            self.root_nodes = nodes
+            nodes, entries = obj_index.iterate_index_entries(data, off)
 
         elif attribute.std_header.name == '$R':
-            nodes, entries = self._iterate_index_entries(data, off)
-            self.entries.extend(entries)
+            nodes, entries = obj_index.iterate_index_entries(data, off)
 
-            log.debug('We have {} sub-nodes:'.format(len(nodes)))
+        self.entries.extend(entries)
 
-            for node in nodes:
-                log.debug('sub-node with VCN: 0x{:x}'.format(node.subnode_vcn))
+        log.debug('We have {} sub-nodes:'.format(len(nodes)))
 
-            self.root_nodes = nodes
+        for node in nodes:
+            log.debug('sub-node with VCN: 0x{:x}'.format(node.subnode_vcn))
 
-
-        else:
-            log.debug("!!! Index {} not supported. !!!".format(attribute.std_header.name))
+        self.root_nodes = nodes
 
         log.debug('')
 
@@ -590,15 +623,9 @@ class Attribute_DATA(Attribute_TYPES):
                     to_read = min(remains_to_read, BIG)
 
 
-
-                #blob += dataModel.getStream(file_offset, file_offset + size_to_read)
-
                 size_of_data -= size_to_read
 
             self.blob = blob
-
-        # if $data is resident, blob will be set in __init__
-#        return self.blob
 
 class Attribute_STANDARD_INFORMATION(Attribute_TYPES):
     @classmethod
@@ -807,7 +834,7 @@ class Attribute_FILE_NAME(Attribute_TYPES):
 
         log.debug('')
 
-class AttributeType(object):
+class AttributeTypeFactory(object):
     @staticmethod
     def recognize(attribute, file_record):
 
@@ -961,7 +988,7 @@ class FileRecord(object):
     def _has_reparse_point(self):
         return self.get_attribute('$REPARSE_POINT')
 
-    def _get_reparse_point(self):
+    def get_reparse_point(self):
         log = Helper().logger()
 
         root = self
@@ -1375,7 +1402,7 @@ class MFT(object):
         obj.flags = flags
         obj.real_size = real_size
         obj.allocated_size = allocated_size
-        obj.file_reference = file_reference
+        obj.file_reference = FileReference(file_reference)
         obj.next_attribute_id = next_attribute_id
 
         #save fs geometry
@@ -1524,7 +1551,7 @@ class MFT(object):
 
             ao += attr_length
 
-            attribute.obj = AttributeType.recognize(attribute, obj)
+            attribute.obj = AttributeTypeFactory.recognize(attribute, obj)
             if attribute.obj is None:
                 self.logger.debug('Attribute {} (0x{:x}) not supported yet.'.format(attribute.std_header.attrdef.name, attribute.std_header.attrdef.type))
                 self.logger.debug('')
@@ -1544,6 +1571,27 @@ class MFT(object):
         log.debug('')
         return obj
 
+    def get_reparse_points(self):
+        log = Helper().logger()
+
+        fr = self.get_filerecord_of_path(r'$Extend\$Reparse')
+        if fr is None:
+            log.debug('It seems we do not have $Reparse file, exiting.')
+            return None
+
+        D = []
+        indexs = fr.get_attribute('$INDEX_ROOT')
+        for index in indexs:
+            if index.attribute.std_header.name == '$R':
+                for entry in index.entries:
+                    record_number = entry.mft_file_record.record_number
+                    fr = self.get_file_record(record_number)
+                    if fr is None:
+                        log.debug("File record #{} referenced in $Reparse not found!".format(record_number))
+
+                    D += [(record_number, fr.get_displayed_filename(), fr.get_reparse_point())]
+
+        return D
 
     def get_filerecord_of_path(self, path):
         # we accept windows path
@@ -1616,7 +1664,7 @@ class MFT(object):
 
         if current in filenames:
             if root._has_reparse_point():
-                symlink = root._get_reparse_point()
+                symlink = root.get_reparse_point()
                 root = self.get_filerecord_of_path(symlink)
 
 
