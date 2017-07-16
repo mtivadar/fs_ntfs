@@ -4,7 +4,7 @@ from . import helper
 from . import DataModel
 from . import indexes
 from . import filerecord
-from . import fs_ntfs
+from . import ntfs
 
 class AttrDefEntry(object):
     def __init__(self, a, t, f):
@@ -39,7 +39,7 @@ class AttrDef(object):
         if t in self._Index:
             return self._Index[t]
         else:
-            raise fs_ntfs.NtfsError('Attribute type 0x{:0x} not found in $AttrDef.'.format(t))
+            raise ntfs.NtfsError('Attribute type 0x{:0x} not found in $AttrDef.'.format(t))
 
     def getAttributes(self):
         return self._Attrs
@@ -58,7 +58,7 @@ class Attribute(object):
         try:
             return self.std_header.non_resident_flag
         except AttributeError:
-            raise fs_ntfs.NtfsError("std_header is probably not set yet!")
+            raise ntfs.NtfsError("std_header is probably not set yet!")
 
 class AttributeTypeFactory(object):
     @staticmethod
@@ -187,7 +187,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
         log.debug('{}'.format(g))
 
         # fixup things
-        fs_ntfs.NTFS.fixup_seq_numbers(data, update_seq_array, size_update_seq, update_seq, self.file_record.mft.bytes_per_sector)
+        ntfs.NTFS.fixup_seq_numbers(data, update_seq_array, size_update_seq, update_seq, self.file_record.mft.bytes_per_sector)
 
         self.non_leaf_node = data.getBYTE(ofs + 0x18 + 0x0c)
         log.debug('Non-leaf node Flag (has sub-nodes): {}'.format(self.non_leaf_node))

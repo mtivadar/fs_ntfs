@@ -5,7 +5,7 @@ from . import DataModel
 from . import helper
 from . import filerecord
 from . import attributes
-from . import fs_ntfs
+from . import ntfs
 
 class MFT(object):
     def __init__(self, boot, dataModel):
@@ -15,7 +15,7 @@ class MFT(object):
         self.dataModel = dataModel
 
         if self.dataModel.size() < 512:
-            raise fs_ntfs.NtfsError("Invalid NTFS image")
+            raise ntfs.NtfsError("Invalid NTFS image")
 
         # compute $MFT cluster
         self.lcn_of_mft              = boot.lcn_of_mft
@@ -36,7 +36,7 @@ class MFT(object):
             self.file_record_size = self.clusters_per_mft_record * self.sectors_per_cluster * self.bytes_per_sector    
 
         if start_mft > self.dataModel.size():
-            raise fs_ntfs.NtfsError('MFT initialization failed.')
+            raise ntfs.NtfsError('MFT initialization failed.')
         else:
             # ok
             pass
@@ -210,7 +210,7 @@ class MFT(object):
         datarun = self._datarun_of_file_record(4)
         if datarun is None:
             # file record not found
-            raise fs_ntfs.NtfsError('Cannot find $AttrDef.')
+            raise ntfs.NtfsError('Cannot find $AttrDef.')
 
         n, lcn, rel_record = datarun
 
@@ -338,7 +338,7 @@ class MFT(object):
         log.debug('{}'.format(g))
 
         # fixup things
-        fs_ntfs.NTFS.fixup_seq_numbers(data, update_seq_array, size_update_seq, update_seq, self.bytes_per_sector)
+        ntfs.NTFS.fixup_seq_numbers(data, update_seq_array, size_update_seq, update_seq, self.bytes_per_sector)
 
 
         off_first_attr = data.getWORD(fr + 0x14)

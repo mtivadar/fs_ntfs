@@ -30,13 +30,6 @@ class NTFS(object):
         # get $AttrDef
         self.mft._build_attrdef()
 
-
-    class FileNamespace():
-        POSIX         = 0x00
-        WIN32         = 0x01
-        DOS           = 0x02
-        WIN32_AND_DOS = 0x03
-
     @staticmethod
     def fixup_seq_numbers(data, update_seq_array, size_update_seq, update_seq, bytes_per_sector):
         log = helper.Helper.logger()
@@ -67,6 +60,12 @@ class NTFS(object):
             fixup_s = fixup_array.getStream(i * 2, i * 2 + 2)
             data.getData()[k-2:k] = fixup_s
             i += 1
+
+class FileNamespace():
+    POSIX         = 0x00
+    WIN32         = 0x01
+    DOS           = 0x02
+    WIN32_AND_DOS = 0x03
 
 class NtfsError(Exception):
     def __init__(self, message):

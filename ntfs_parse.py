@@ -2,7 +2,7 @@ import sys
 import logging
 import argparse
 
-import fs_ntfs.fs_ntfs as fs_ntfs
+import fs_ntfs.ntfs
 import fs_ntfs.DataModel
 
 
@@ -88,7 +88,6 @@ def dump_reparse(mft):
             # don't know why we have file duplicates. not important right now.
             # maybe this is the intended behaviour
             print('#{:<10} {:<40} -> {}'.format(record, symlink, reparse))
-        else:
             A[record] = 0
 
 def main():
@@ -110,7 +109,7 @@ def main():
 
     image = args.image.strip('"')
     
-    ntfs = fs_ntfs.fs_ntfs.NTFS(fs_ntfs.DataModel.FileDataModel(image))
+    ntfs = fs_ntfs.ntfs.NTFS(fs_ntfs.DataModel.FileDataModel(image))
 
     if args.filerecord is not None:
         fr = ntfs.mft.get_file_record(args.filerecord)

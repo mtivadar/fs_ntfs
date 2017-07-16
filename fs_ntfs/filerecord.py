@@ -1,5 +1,5 @@
 from . import helper
-from . import fs_ntfs
+from . import ntfs
 
 class FileReference(object):
     def __init__(self, file_reference):
@@ -31,7 +31,7 @@ class FileRecord(object):
     def get_displayed_filename(self):
         filenames = self.get_file_names()
 
-        for namespace in [fs_ntfs.NTFS.FileNamespace.POSIX, fs_ntfs.NTFS.FileNamespace.WIN32, fs_ntfs.NTFS.FileNamespace.WIN32_AND_DOS, fs_ntfs.NTFS.FileNamespace.DOS]:
+        for namespace in [ntfs.FileNamespace.POSIX, ntfs.FileNamespace.WIN32, ntfs.FileNamespace.WIN32_AND_DOS, ntfs.FileNamespace.DOS]:
             L = [u for u, v in filenames if v == namespace]
             if len(L) > 0:
                 return L[0]
@@ -108,7 +108,7 @@ class FileRecord(object):
             already = set()
 
             for a in index.entries:
-                if a.filename_namespace == fs_ntfs.NTFS.FileNamespace.DOS:
+                if a.filename_namespace == ntfs.FileNamespace.DOS:
                     # we check set to exclude duplicates. almost all
                     # files have DOS & WIN32 namespace filenames
 
