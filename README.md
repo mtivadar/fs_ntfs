@@ -14,11 +14,12 @@ Supported functions:
 * save content of files
 * save content of alternate data streams
 * will handle symlinks
+* dump $Extend/$Reparse
 
 Creates a detailed **debug log** file, so data may be inspected.
 
 ```
-usage: ntfs_parse.py [-h] [-f FILERECORD | -s SEARCH] [-w] [-l [LIST]]
+usage: ntfs_parse.py [-h] [-f FILERECORD | -s SEARCH | -r] [-w] [-l [LIST]]
                      [-q | -L LOG_FILE]
                      image
 
@@ -32,6 +33,7 @@ optional arguments:
   -s SEARCH, --search SEARCH
                         Search path. Will dump all info traversing
                         directories.
+  -r, --reparse         Dump $Reparse file data.
   -w, --fetch-file      Fetch all file's streams.
   -l [LIST], --list [LIST]
                         List files, specify recursion depth (default is 2).
