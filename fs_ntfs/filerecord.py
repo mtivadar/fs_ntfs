@@ -94,16 +94,25 @@ class FileRecord(object):
 
         return streams
 
+    def _is_directory_index(self, index):
+        name = index.attribute.std_header.name
+        return name == '$I30'
+
     def list_dir(self, levels=1):
         if levels == 0:
             return None
 
         indexs = self.get_attribute('$INDEX_ROOT')
+
         if indexs is None:
             return None
 
         D = []
         for index in indexs:
+            
+            # we only traverse $I30 for this
+            if not self._is_directory_index(index):
+                continue
             
             already = set()
 
