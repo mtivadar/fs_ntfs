@@ -70,6 +70,7 @@ def print_dir(dirs, delim='  '):
     for root, subdirs in dirs:
 
         text = textwrap.indent(root, delim + '|- ')
+        # assume terminal is utf-8
         print(text)
         if subdirs is not None:
             print_dir(subdirs, delim + '   ')
@@ -101,8 +102,8 @@ def main():
         logfile = '!logfile-ntfsparser'
         if args.log_file:
             logfile = args.log_file
-        logging.basicConfig(filename=logfile, filemode='w', level=logging.DEBUG)
-
+        logging.basicConfig(handlers=[logging.FileHandler(logfile, 'w', 'utf-8')], 
+                level=logging.DEBUG)
 
 
     logger = logging.getLogger(__name__)
