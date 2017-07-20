@@ -51,3 +51,8 @@ Usage: ntfs_parse.py \\.\c: -f 0 --fetch-file
        ntfs_parse.py ntfs_image -f 123 --fetch-file
        
 ```
+
+# thanks to:
+http://ftp.kolibrios.org/users/Asper/docs/NTFS/ntfsdoc.html
+
+https://flatcap.org/linux-ntfs
