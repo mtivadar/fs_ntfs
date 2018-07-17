@@ -3,7 +3,7 @@ import logging
 class Helper(object):
     @staticmethod
     def _widechar_to_ascii(s):
-        return s.decode("utf-16").strip('\x00')
+        return s.decode("utf-16", 'ignore').strip('\x00')
 
     @staticmethod
     def logger():
