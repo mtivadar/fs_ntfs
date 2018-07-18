@@ -119,7 +119,9 @@ class Index_I30(Index_TYPES):
             # index entry
             file_reference = data.getQWORD(off + 0)
             #print 'File reference: 0x{:0X}'.format(file_reference)
+
             entry.file_reference = filerecord.FileReference(file_reference)
+            log.debug('file record: #{}'.format(entry.file_reference.record_number))
 
             entry.length_index_entry = data.getWORD(off + 8)
             #print 'Length of the index entry: 0x{:0X}'.format(entry.length_index_entry)
