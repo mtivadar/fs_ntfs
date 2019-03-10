@@ -285,6 +285,19 @@ class MFT(object):
         self.AttrDef = _attrDef
         return _attrDef
 
+    def get_mft_start_offset_size(self):
+        datarun = self._datarun_of_file_record(1)
+        if datarun is None:
+            # file record not found
+            return None, None
+
+        n, lcn, rel_record = datarun
+
+        start_mft         = lcn * self.sectors_per_cluster * self.bytes_per_sector
+        mft_size_in_bytes =   n * self.sectors_per_cluster * self.bytes_per_sector
+
+        return start_mft, mft_size_in_bytes
+
     def get_file_record(self, which_file_record):
         log = helper.Helper.logger()
 
@@ -305,6 +318,10 @@ class MFT(object):
         # simple check
         fr = file_record_offset
 
+        obj = filerecord.FileRecord(self)
+        obj.offset = fr
+        obj.size = self.file_record_size
+
         # get buffered data model
         data = DataModel.BufferDataModel(self.dataModel.getStream(fr, fr + self.file_record_size), 'file_record')
         fr = 0
@@ -316,8 +333,6 @@ class MFT(object):
             return None
             #raise NtfsError('magic should mach "FILE", offset 0x{:x}'.format(fr))
 
-
-        obj = filerecord.FileRecord(self)
 
         offset_update_seq = data.getWORD(fr + 0x04)
         log.debug('Offset to update sequence: 0x{:0x}'.format(offset_update_seq))
