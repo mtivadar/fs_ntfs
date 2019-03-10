@@ -320,7 +320,7 @@ class Attribute_INDEX_ROOT(Attribute_TYPES):
 
 
         # i'm not sure why in index_root, index type == $R, we actually have the format from $I30
-        obj_index = indexes.IndexTypeFactory.recognize('$I30')#attribute.std_header.name)
+        obj_index = indexes.IndexTypeFactory.recognize(attribute.std_header.name)
         if obj_index is None:
             log.debug("!!! Index {} not supported. !!!".format(attribute.std_header.name))
 
@@ -485,6 +485,10 @@ class Attribute_REPARSE_POINT(Attribute_TYPES):
         if self.reparse_type == 0xA000000C:
             # TODO! i do not know why is this. documentation says nothing
             buff = data.getStream(ao + s_off, ao + s_off + s_len + 4)
+
+        if self.reparse_type == 0xA000000C:
+            # TODO! i do not know why is this. documentation says nothing
+            buff = data.getStream(ao + s_off + 4, ao + s_off + s_len + 4)
 
         self.substitute_path = helper.Helper._widechar_to_ascii(buff)
         log.debug('Substitute path: {}'.format(self.substitute_path))
